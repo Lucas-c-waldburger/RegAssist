@@ -35,6 +35,9 @@ struct RangeFormat
     {
         addSubExp(numStr, bracketLow, bracketHigh);
     }
+
+
+
 };
 
 //class RangeTools

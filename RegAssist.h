@@ -5,8 +5,11 @@
 #include <iostream>
 #include <regex>
 #include <memory>
-
 #include "RangeTools.h"
+
+#define BOTH_POS 0
+#define MIN_NEG 1
+#define BOTH_NEG 2
 
 class RegAssist
 {
@@ -66,9 +69,7 @@ public:
 
 
     std::string buildRangeExpression(std::string min, std::string max);
-    std::string makeRangeMax(std::string max, size_t minSize);
-    std::string makeRangeMin(std::string min);
-    std::string makeRanges(std::string min, std::string max);
+    std::string buildRangeExpNegatives(std::string min, std::string max);
 
     std::vector<std::string>& match(std::string regexQuery, std::string tempSubject);
 

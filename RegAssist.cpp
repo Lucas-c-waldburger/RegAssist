@@ -1,6 +1,11 @@
 
 #include "RegAssist.h"
 
+// TODO : general
+//  - clean up unnecessary layer for 0-n ranges
+//  - FIND OUT \\b workarounds for commas, etc
+//  - template rangeMatch to accept, find, and return doubles, longs
+//  - change match function to return a separate match vector of user-specified type, while log stores copy as const str
 
 RegAssist::RegAssist(std::string subject) : subject(subject)
 {}
@@ -66,142 +71,46 @@ std::string RegAssist::buildRangeExpression(std::string min, std::string max)
     }
 }
 
-// SEE IF ADDING EMPTY STRING FUCKS THINGS UP
-// IF NOT, JUST USE BACKET_MAX()
-
-// TOP LEVEL FUNCTION ASSIGNS OPENING/CLOSING '\\b'
-
-// pass decrement/increment as functional?
-// then would need a "top level" function to consolidate
-
-// THIS MIGHT ONLY WORK IF MAX HAS MORE DIGIT PLACES!!!!!!!!! check plz
-std::string RegAssist::makeRangeMax(std::string max, size_t minSize)
+// returns joined expressions WITHOUT enclosing \b( )\b OR signPrefix "-"/"(-)?"
+std::string RegAssist::buildRangeExpNegatives(std::string min, std::string max)
 {
+    RangeFormat format;
+    std::string dCount;
+    char tempMin, tempMax;
+    std::string::reverse_iterator minIt, maxIt;
 
-    if (max.front() == '0')
-        throw std::invalid_argument("Numbers cannot begin with '0'");
+    std::string rangeExp;
 
-
-    std::string formattedRange;
-    std::string dCountMax;
-    char tempMax;
-    char bottomBound = '0';
-
-    int dCount = 0;
-    auto addDs = [&dCount]() { std::string d; for (int i = 0; i < dCount; i++) { d += "\\d"; } return d; };
-
-    tempMax = max.back();
-    max.pop_back();
-    formattedRange += max + '[' + bottomBound + '-' + tempMax + "]|";
-
-    std::string::reverse_iterator rIt;
-    while (dCount != minSize && bottomBound != '1')
+    while (true)
     {
-        if (max.empty())
+        // PULL OUT
+        tempMin = min.back(); tempMax = max.back();
+        min.pop_back(); max.pop_back();
+
+        // CHECK MAX EMPTY
+        if (max.empty() || min == max)
         {
-            --dCount;
-            formattedRange += "[1-9]" + addDs() + '|';
-
+            format(max, tempMin, tempMax);
+            return rangeExp + format.join(dCount); // optional = true means we need to do another build
         }
-        else
-        {
-            rIt = max.rbegin();
-            decrement(max, rIt);
 
-            tempMax = max.back();
-            max.pop_back();
+        // BUILD
+        format(min, tempMin, '9');
+        format(max, '0', tempMax);
+        rangeExp += format.join(dCount) + '|';
 
-            ++dCount;
+        // CHECK MIN EMPTY
+        if (min.empty())
+            min = "0";
 
-            if (max.empty())
-                bottomBound = '1';
+        // INC/DEC FOR NEXT LOOP
+        minIt = min.rbegin(); maxIt = max.rbegin();
+        increment(min, minIt); decrement(max, maxIt);
 
-            formattedRange += max + '[' + bottomBound + '-' + tempMax + ']' + addDs() + '|';
-
-        }
+        // ++DCOUNT FOR NEXT LOOP
+        dCount += "\\d";
     }
-
-    formattedRange.pop_back();
-    return formattedRange;
 }
-
-
-std::string RegAssist::makeRangeMin(std::string min)
-{
-
-    if (min.front() == '0')
-        throw std::invalid_argument("Numbers cannot begin with '0'");
-
-
-    std::string formattedRange;
-    std::string dCountMin;
-    char tempMin;
-
-    tempMin = min.back();
-    min.pop_back();
-    formattedRange += min + '[' + tempMin + "-9]|";
-
-    std::string::reverse_iterator rIt;
-    while (!min.empty())
-    {
-
-        rIt = min.rbegin();
-        increment(min, rIt);
-
-        tempMin = min.back();
-        min.pop_back();
-
-        dCountMin += "\\d";
-
-        formattedRange += min + '[' + tempMin + "-9]" + dCountMin + '|';
-    }
-
-    return formattedRange;
-}
-
-
-
-//std::string RegAssist::makeRanges(std::string min, std::string max)
-//{
-//
-//    auto rtMin = RTMin(min);
-//    auto rtMax = RTMax(max);
-//
-//    std::string dCount;
-//    auto formatLayer = [&]() { return '(' + rtMin.format() + '|' + rtMax.format() + ')' + dCount; };
-//
-//    std::string formattedRange = formatLayer() + '|';
-//
-//    std::string::reverse_iterator rIt;
-//    while (!rtMin.bound.empty() && !rtMax.bound.empty())
-//    {
-//        if (max.empty())
-//        {
-//            --dCount;
-//            formattedRange += "[1-9]" + addDs() + '|';
-//
-//        }
-//        else
-//        {
-//            rIt = max.rbegin();
-//            decrement(max, rIt);
-//
-//            tempMax = max.back();
-//            max.pop_back();
-//
-//            ++dCount;
-//
-//            if (max.empty())
-//                bottomBound = '1';
-//
-//            formattedRange += max + '[' + bottomBound + '-' + tempMax + ']' + addDs() + '|';
-//
-//        }
-//    }
-//
-//    formattedRange.pop_back();
-//    return formattedRange;
-//}
 
 
 // performs new match using supplied regexQuery argument 
@@ -286,10 +195,24 @@ void RegAssist::decrement(std::string& numStr, std::string::reverse_iterator cur
 }
 
 std::vector<std::string> &RegAssist::rangeMatch(int min, int max) {
-    std::string minStr = std::to_string(min);
-    std::string maxStr = std::to_string(max);
 
-    std::string rangeQuery = buildRangeExpression(minStr, maxStr);
+    std::string minStr = std::to_string(abs(min)); // remove '-' from min/max strings
+    std::string maxStr = std::to_string(abs(max));
+    std::string nonHyphen = "[^-,a-zA-Z0-9]+";
+    std::string rangeQuery;
+
+    if (min < 0 )
+    {
+        if (max < 0) // CASE BOTH_NEGATIVE
+            rangeQuery = nonHyphen + "-(" + buildRangeExpNegatives(maxStr, minStr) + ")\\b"; // build with max as arg[0] and min as arg[1] with a required '-'
+
+        else
+            rangeQuery = nonHyphen + "-(" + buildRangeExpNegatives("1", minStr) + ")\\b|" + nonHyphen + "(" + buildRangeExpNegatives("0", maxStr) + ")\\b";
+    }
+    else // CASE BOTH_POSITIVE
+        rangeQuery = nonHyphen + '(' + buildRangeExpNegatives(minStr, maxStr) + ")\\b";
+    std::cout << rangeQuery;
 
     return match(rangeQuery, subject);
 }
+
